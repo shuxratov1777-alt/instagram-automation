@@ -5,6 +5,5 @@ COPY pyproject.toml .
 COPY app ./app
 RUN pip install --no-cache-dir .
 RUN useradd --create-home appuser && mkdir -p /app/data && chown -R appuser:appuser /app
-USER appuser
 EXPOSE 8000
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "mkdir -p /app/data && chown -R appuser:appuser /app/data && exec su -s /bin/sh appuser -c \"exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}\""]
