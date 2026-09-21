@@ -4,16 +4,23 @@ import hashlib
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
 from sqlalchemy import func, select
 
 from .comments import classify_comment, may_auto_reply
 from .config import settings
 from .database import Job, Video, WebhookEvent, init_db, session_scope
 from .pipeline import ingest, process
-from .security import verify_meta_signature
+from .security import verify_admin_key, verify_meta_signature
 
 app = FastAPI(title="Instagram Automation", version="0.1.0")
+
+
+def require_admin(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
+    if not settings.admin_api_key:
+        raise HTTPException(503, "ADMIN_API_KEY is not configured")
+    if not verify_admin_key(x_api_key, settings.admin_api_key):
+        raise HTTPException(401, "Invalid API key")
 
 
 @app.on_event("startup")
@@ -36,14 +43,14 @@ def ready() -> dict:
     }
 
 
-@app.get("/status")
+@app.get("/status", dependencies=[Depends(require_admin)])
 def status() -> dict:
     with session_scope() as session:
         counts = dict(session.execute(select(Job.state, func.count()).group_by(Job.state)).all())
     return {"jobs": counts, "meta": settings.meta_ready, "dry_run_default": not settings.auto_publish}
 
 
-@app.post("/videos")
+@app.post("/videos", dependencies=[Depends(require_admin)])
 async def upload_video(file: UploadFile, dry_run: bool = True) -> dict:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".mp4", ".mov", ".m4v"}:
@@ -66,7 +73,7 @@ async def upload_video(file: UploadFile, dry_run: bool = True) -> dict:
     return {"job_id": job_id, "created": created}
 
 
-@app.post("/jobs/{job_id}/process")
+@app.post("/jobs/{job_id}/process", dependencies=[Depends(require_admin)])
 def process_job(job_id: str) -> dict:
     try:
         return {"job_id": job_id, "state": process(job_id)}
@@ -99,9 +106,8 @@ async def instagram_webhook(request: Request, x_hub_signature_256: str | None = 
     return {"accepted": True, "duplicate": False}
 
 
-@app.post("/comments/classify")
+@app.post("/comments/classify", dependencies=[Depends(require_admin)])
 async def classify(request: Request) -> dict:
     body = await request.json()
     category = classify_comment(str(body.get("text", "")))
     return {"category": category, "eligible_for_auto_reply": settings.auto_reply_comments and may_auto_reply(category)}
-
