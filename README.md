@@ -6,7 +6,7 @@ Public actions are disabled by default. `AUTO_PUBLISH=false` and `AUTO_REPLY_COM
 
 ## Owner approval via Telegram
 
-DM replies, comment replies, posts, and Reels are always placed in an approval queue. The Telegram approval bot asks the owner to write the exact reply/caption, then shows a separate Confirm/Reject step. Approval does not bypass the action queue, and no public action is performed without an explicit owner decision.
+DM replies, comment replies, posts, and Reels are always placed in an approval queue. The Telegram approval bot asks the owner to write the exact reply/caption, then shows a separate Confirm/Reject step. Only an explicit approval can execute the Instagram action. Approved posts and Reels may include a future `scheduled_at` value and remain queued until that time.
 
 Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OWNER_CHAT_ID` only through the hosting provider's secret-variable UI. Never commit or paste the bot token into chat.
 
@@ -28,4 +28,4 @@ python3 -m app.cli /absolute/path/video.mp4
 
 ## Current boundary
 
-Local video processing, state management, duplicate prevention, API health, webhook authenticity, and comment triage are implemented and testable. Live transcription, publishing, replies, analytics, and cloud deployment require owner-approved provider credentials and a public HTTPS deployment. The service never pretends these integrations are active when credentials are absent.
+Local video processing, state management, duplicate prevention, API health, webhook authenticity, comment triage, owner-approved replies, and owner-approved publishing are implemented and testable. Live transcription and expanded analytics require additional provider configuration. The service never pretends integrations are active when credentials are absent.

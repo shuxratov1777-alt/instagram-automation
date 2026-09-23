@@ -3,6 +3,7 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+*.egg-info/
 data/*.db
 data/incoming/*
 data/processing/*
@@ -10,4 +11,3 @@ data/ready/*
 data/published/*
 data/failed/*
 !data/**/.gitkeep
-

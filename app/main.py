@@ -14,6 +14,7 @@ from .database import ApprovalRequest, Job, Video, WebhookEvent, init_db, sessio
 from .pipeline import ingest, process
 from .security import verify_admin_key, verify_meta_signature
 from .telegram_bot import notify_approval, start_telegram_bot
+from .executor import start_approval_executor
 
 app = FastAPI(title="Instagram Automation", version="0.1.0")
 
@@ -29,6 +30,7 @@ def require_admin(x_api_key: str | None = Header(default=None, alias="X-API-Key"
 def startup() -> None:
     init_db()
     start_telegram_bot()
+    start_approval_executor()
 
 
 @app.get("/health")
@@ -132,6 +134,9 @@ async def request_content_approval(request: Request) -> dict:
     content_type = str(body.get("content_type", "")).lower()
     if content_type not in {"post", "reel"}:
         raise HTTPException(422, "content_type must be post or reel")
+    media_url = str(body.get("media_url") or body.get("image_url") or body.get("video_url") or "")
+    if not media_url.startswith("https://"):
+        raise HTTPException(422, "A public HTTPS media_url is required")
     source_ref = str(body.get("source_ref") or f"content:{content_type}:{hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()}")
     approval = create_approval(f"publish_{content_type}", source_ref, body)
     if approval:

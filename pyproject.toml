@@ -18,3 +18,5 @@ dev = ["pytest==8.4.2"]
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.setuptools]
+packages = ["app"]

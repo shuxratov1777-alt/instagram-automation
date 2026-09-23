@@ -4,12 +4,14 @@ import json
 import logging
 import threading
 import time
+from uuid import uuid4
 
 import httpx
 
-from .approvals import decide, set_proposed_text
+from .approvals import create_approval, decide, set_proposed_text
 from .config import settings
 from .database import ApprovalRequest
+from .executor import execute_approval
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +82,34 @@ def _handle_message(message: dict) -> None:
         return
     text = str(message.get("text") or "").strip()
     if text == "/start":
-        _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "SocialFlow tasdiqlash boti ulandi. Hech bir javob yoki nashr sizning tasdig‘ingizsiz bajarilmaydi."})
+        _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": (
+            "SocialFlow tasdiqlash boti ulandi. Hech bir javob yoki nashr sizning tasdig‘ingizsiz bajarilmaydi.\n\n"
+            "Kontent tayyorlash:\n"
+            "/post HTTPS_RASM_URL | YYYY-MM-DD HH:MM\n"
+            "/reel HTTPS_VIDEO_URL | YYYY-MM-DD HH:MM\n"
+            "Vaqt ixtiyoriy; ko‘rsatilmasa tasdiqdan keyin darhol nashr qilinadi."
+        )})
+        return
+    if text == "/help":
+        _handle_message({"chat": {"id": settings.telegram_owner_chat_id}, "text": "/start"})
+        return
+    if text.startswith("/post ") or text.startswith("/reel "):
+        command, raw = text.split(maxsplit=1)
+        pieces = [piece.strip() for piece in raw.split("|", 1)]
+        media_url = pieces[0]
+        scheduled_at = pieces[1] if len(pieces) == 2 else ""
+        if not media_url.startswith("https://"):
+            _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "Media uchun ochiq HTTPS URL yuboring."})
+            return
+        kind = "post" if command == "/post" else "reel"
+        context = {
+            "media_url": media_url,
+            "scheduled_at": scheduled_at,
+            "incoming_text": f"{kind.upper()} media: {media_url}" + (f"\nVaqt: {scheduled_at}" if scheduled_at else "\nVaqt: tasdiqdan keyin darhol"),
+        }
+        request = create_approval(f"publish_{kind}", f"telegram:{kind}:{uuid4()}", context)
+        if request:
+            notify_approval(request)
         return
     if not (text.startswith("/reply ") or text.startswith("/caption ")):
         return
@@ -110,8 +139,26 @@ def _handle_callback(callback: dict) -> None:
         result = "Tasdiqlandi. Bajarish navbatiga qo‘yildi." if action == "approve" else "Rad etildi. Hech narsa yuborilmadi."
         _api("answerCallbackQuery", {"callback_query_id": callback.get("id"), "text": result})
         _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": f"ID {request.id}: {result}"})
+        if action == "approve":
+            threading.Thread(target=_execute_and_report, args=(request.id,), daemon=True).start()
     except (KeyError, ValueError) as exc:
         _api("answerCallbackQuery", {"callback_query_id": callback.get("id"), "text": str(exc)[:180], "show_alert": True})
+
+
+def _execute_and_report(request_id: int) -> None:
+    try:
+        result = execute_approval(request_id)
+        if result["status"] == "SCHEDULED":
+            text = f"ID {request_id}: rejalashtirildi — {result.get('scheduled_at')}."
+        else:
+            text = f"ID {request_id}: Instagram amali muvaffaqiyatli bajarildi."
+    except Exception as exc:
+        logger.exception("Approved Instagram action %s failed", request_id)
+        text = f"ID {request_id}: bajarishda xato. Hech narsa takroran yuborilmadi. Xato: {str(exc)[:300]}"
+    try:
+        _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": text})
+    except Exception:
+        logger.exception("Could not report approval result to Telegram")
 
 
 def _poll() -> None:

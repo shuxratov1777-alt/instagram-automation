@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from .config import settings
 from .database import ApprovalRequest, session_scope
 
 
@@ -61,6 +62,8 @@ def queue_from_instagram(payload: dict[str, Any]) -> list[ApprovalRequest]:
     for entry in payload.get("entry", []):
         for event in entry.get("messaging", []):
             message = event.get("message") or {}
+            if message.get("is_echo"):
+                continue
             text = message.get("text")
             sender_id = str((event.get("sender") or {}).get("id") or "")
             message_id = str(message.get("mid") or event.get("timestamp") or "")
@@ -79,11 +82,15 @@ def queue_from_instagram(payload: dict[str, Any]) -> list[ApprovalRequest]:
             comment_id = str(value.get("id") or value.get("comment_id") or "")
             text = value.get("text")
             if comment_id and text:
+                author_id = str((value.get("from") or {}).get("id") or "")
+                if author_id and author_id == settings.instagram_user_id:
+                    continue
                 request = create_approval(
                     "comment_reply",
                     f"comment:{comment_id}",
                     {
                         "comment_id": comment_id,
+                        "author_id": author_id,
                         "username": str((value.get("from") or {}).get("username") or ""),
                         "incoming_text": str(text)[:2000],
                     },
