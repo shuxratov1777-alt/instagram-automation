@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from .comments import classify_comment, may_auto_reply
@@ -36,6 +37,33 @@ def startup() -> None:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy() -> str:
+    return """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SocialFlow Automation Privacy Policy</title></head><body style="font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;line-height:1.6">
+<h1>SocialFlow Automation Privacy Policy</h1><p><strong>Effective date:</strong> September 23, 2026</p>
+<p>SocialFlow Automation is a private tool used by the owner of the Instagram professional account @shukhratov.e to review and approve replies and content publishing.</p>
+<h2>Data processed</h2><p>The service may process Instagram-scoped user identifiers, message or comment text, event identifiers, approval decisions, captions, and publishing results. It does not request Instagram passwords.</p>
+<h2>Purpose and sharing</h2><p>Data is used only to show the account owner an approval request and to perform the exact reply or publishing action the owner confirms. Approval notifications are sent to the owner's private Telegram bot. Data is not sold or used for advertising.</p>
+<h2>Storage and security</h2><p>Operational records are stored in the service database with access restricted to the owner and service administrators. Access tokens are stored as protected deployment variables and are not displayed publicly.</p>
+<h2>Retention and deletion</h2><p>Records are retained only while needed for operation, troubleshooting, and duplicate prevention. To request deletion, follow the instructions on the <a href="/data-deletion">Data Deletion</a> page.</p>
+<h2>Contact</h2><p>Contact the account owner through the Instagram profile <a href="https://www.instagram.com/shukhratov.e/">@shukhratov.e</a>.</p>
+</body></html>"""
+
+
+@app.get("/data-deletion", response_class=HTMLResponse)
+def data_deletion() -> str:
+    return """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SocialFlow Automation Data Deletion</title></head><body style="font-family:system-ui;max-width:760px;margin:40px auto;padding:0 20px;line-height:1.6">
+<h1>Data Deletion Instructions</h1>
+<p>To request deletion of data processed by SocialFlow Automation:</p>
+<ol><li>Send a direct message to <a href="https://www.instagram.com/shukhratov.e/">@shukhratov.e</a>.</li><li>Write “Data deletion request” and include the Instagram username whose data should be deleted.</li><li>The account owner will verify the request and remove associated operational records within 30 days.</li></ol>
+<p>Deleting records does not remove messages or comments already sent through Instagram; those can be managed directly in Instagram.</p>
+</body></html>"""
 
 
 @app.get("/ready")

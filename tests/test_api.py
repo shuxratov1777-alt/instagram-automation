@@ -14,6 +14,16 @@ def test_health():
         assert ready["human_approval_required"] is True
 
 
+def test_public_policy_pages():
+    with TestClient(app) as client:
+        privacy = client.get("/privacy")
+        deletion = client.get("/data-deletion")
+        assert privacy.status_code == 200
+        assert "Privacy Policy" in privacy.text
+        assert deletion.status_code == 200
+        assert "Data Deletion Instructions" in deletion.text
+
+
 def test_admin_routes_require_api_key(monkeypatch):
     monkeypatch.setattr(settings, "admin_api_key", "test-secret")
     with TestClient(app) as client:
