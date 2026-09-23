@@ -13,6 +13,18 @@ from .database import ApprovalRequest, session_scope
 ALLOWED_ACTIONS = {"dm_reply", "comment_reply", "publish_post", "publish_reel"}
 
 
+def pending_input_ids(limit: int = 2) -> list[int]:
+    """Return the newest requests that are still waiting for owner-written text."""
+    with session_scope() as session:
+        rows = session.scalars(
+            select(ApprovalRequest.id)
+            .where(ApprovalRequest.status == "PENDING_INPUT")
+            .order_by(ApprovalRequest.id.desc())
+            .limit(limit)
+        ).all()
+        return list(rows)
+
+
 def create_approval(action_type: str, source_ref: str, context: dict[str, Any]) -> ApprovalRequest | None:
     if action_type not in ALLOWED_ACTIONS:
         raise ValueError(f"Unsupported approval action: {action_type}")

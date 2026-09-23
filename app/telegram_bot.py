@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from uuid import uuid4
 
 import httpx
 
-from .approvals import create_approval, decide, set_proposed_text
+from .approvals import create_approval, decide, pending_input_ids, set_proposed_text
 from .config import settings
 from .database import ApprovalRequest
 from .executor import execute_approval
@@ -77,6 +78,20 @@ def _send_confirmation(request: ApprovalRequest) -> None:
     )
 
 
+def _request_id_from_replied_message(message: dict) -> int | None:
+    replied_text = str(((message.get("reply_to_message") or {}).get("text")) or "")
+    match = re.search(r"(?m)^ID:\s*(\d+)\s*$", replied_text)
+    return int(match.group(1)) if match else None
+
+
+def _accept_proposed_text(request_id: int, text: str) -> None:
+    try:
+        request = set_proposed_text(request_id, text)
+        _send_confirmation(request)
+    except (KeyError, ValueError):
+        _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "Bu ID topilmadi yoki allaqachon yopilgan."})
+
+
 def _handle_message(message: dict) -> None:
     if str((message.get("chat") or {}).get("id")) != settings.telegram_owner_chat_id:
         return
@@ -112,16 +127,28 @@ def _handle_message(message: dict) -> None:
             notify_approval(request)
         return
     if not (text.startswith("/reply ") or text.startswith("/caption ")):
+        if not text or text.startswith("/"):
+            return
+        request_id = _request_id_from_replied_message(message)
+        if request_id is not None:
+            _accept_proposed_text(request_id, text)
+            return
+        pending = pending_input_ids()
+        if len(pending) == 1:
+            _accept_proposed_text(pending[0], text)
+        elif len(pending) > 1:
+            _api("sendMessage", {
+                "chat_id": settings.telegram_owner_chat_id,
+                "text": "Bir nechta so‘rov javob kutmoqda. Kerakli xabarga Telegram Reply orqali javob yozing yoki /reply ID MATN formatidan foydalaning.",
+            })
+        else:
+            _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "Hozir javob kutayotgan so‘rov yo‘q."})
         return
     parts = text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit():
         _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "Format: /reply ID MATN yoki /caption ID MATN"})
         return
-    try:
-        request = set_proposed_text(int(parts[1]), parts[2])
-        _send_confirmation(request)
-    except (KeyError, ValueError):
-        _api("sendMessage", {"chat_id": settings.telegram_owner_chat_id, "text": "Bu ID topilmadi yoki allaqachon yopilgan."})
+    _accept_proposed_text(int(parts[1]), parts[2])
 
 
 def _handle_callback(callback: dict) -> None:

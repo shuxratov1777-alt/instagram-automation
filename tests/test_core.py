@@ -8,7 +8,7 @@ import pytest
 from app.comments import classify_comment, may_auto_reply
 from app.security import verify_admin_key, verify_meta_signature
 from app.state import TRANSITIONS
-from app.approvals import ALLOWED_ACTIONS, create_approval, decide, queue_from_instagram, set_proposed_text
+from app.approvals import ALLOWED_ACTIONS, create_approval, decide, pending_input_ids, queue_from_instagram, set_proposed_text
 from app.database import ApprovalRequest, init_db, session_scope
 from app import executor
 
@@ -123,3 +123,22 @@ def test_echo_dm_is_not_queued():
         "message": {"mid": f"echo-{uuid4()}", "text": "sent", "is_echo": True},
     }]}]}
     assert queue_from_instagram(payload) == []
+
+
+def test_pending_input_ids_only_returns_open_requests():
+    init_db()
+    pending = create_approval("comment_reply", f"test-comment:{uuid4()}", {"comment_id": "c1"})
+    closed = create_approval("dm_reply", f"test-closed:{uuid4()}", {"sender_id": "u1"})
+    set_proposed_text(closed.id, "Tayyor")
+
+    ids = pending_input_ids(limit=100)
+
+    assert pending.id in ids
+    assert closed.id not in ids
+
+
+def test_replied_telegram_message_extracts_approval_id():
+    from app.telegram_bot import _request_id_from_replied_message
+
+    message = {"reply_to_message": {"text": "Yangi Instagram komment\nID: 42\nMatn: Test"}}
+    assert _request_id_from_replied_message(message) == 42
