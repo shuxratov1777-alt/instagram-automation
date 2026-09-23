@@ -6,6 +6,8 @@ import pytest
 from app.comments import classify_comment, may_auto_reply
 from app.security import verify_admin_key, verify_meta_signature
 from app.state import TRANSITIONS
+from app.approvals import ALLOWED_ACTIONS, queue_from_instagram
+from app.database import ApprovalRequest, init_db, session_scope
 
 
 def test_signature_verification():
@@ -39,3 +41,26 @@ def test_sensitive_comment_never_auto_replied():
 def test_state_machine_blocks_skips():
     assert "PUBLISHED" not in TRANSITIONS["UPLOADED"]
     assert "VALIDATING" in TRANSITIONS["UPLOADED"]
+
+
+def test_public_actions_require_approval_queue():
+    assert {"dm_reply", "comment_reply", "publish_post", "publish_reel"} <= ALLOWED_ACTIONS
+
+
+def test_instagram_dm_is_queued_for_human_input():
+    init_db()
+    payload = {
+        "entry": [{
+            "messaging": [{
+                "sender": {"id": "sender-1"},
+                "message": {"mid": "test-mid-approval", "text": "Salom"},
+            }]
+        }]
+    }
+    queued = queue_from_instagram(payload)
+    assert len(queued) in {0, 1}
+    with session_scope() as session:
+        row = session.query(ApprovalRequest).filter_by(source_ref="dm:test-mid-approval").one()
+        assert row.action_type == "dm_reply"
+        assert row.status == "PENDING_INPUT"
+        assert row.proposed_text is None
