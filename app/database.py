@@ -57,6 +57,18 @@ class WebhookEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class ApprovalRequest(Base):
+    __tablename__ = "approval_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action_type: Mapped[str] = mapped_column(String(40), index=True)
+    source_ref: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    context_json: Mapped[str] = mapped_column(Text, default="{}")
+    proposed_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="PENDING_INPUT", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class SystemEvent(Base):
     __tablename__ = "system_events"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -86,4 +98,3 @@ def session_scope():
         raise
     finally:
         session.close()
-

@@ -9,7 +9,7 @@ def as_bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/automation.db")
@@ -22,6 +22,8 @@ class Settings:
     instagram_user_id: str = os.getenv("INSTAGRAM_USER_ID", "")
     meta_graph_version: str = os.getenv("META_GRAPH_VERSION", "v23.0")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    telegram_owner_chat_id: str = os.getenv("TELEGRAM_OWNER_CHAT_ID", "")
     auto_process_video: bool = as_bool("AUTO_PROCESS_VIDEO", True)
     auto_generate_subtitles: bool = as_bool("AUTO_GENERATE_SUBTITLES", True)
     auto_generate_caption: bool = as_bool("AUTO_GENERATE_CAPTION", True)
@@ -36,10 +38,13 @@ class Settings:
     def meta_ready(self) -> bool:
         return bool(self.instagram_access_token and self.instagram_user_id and self.public_base_url)
 
+    @property
+    def telegram_ready(self) -> bool:
+        return bool(self.telegram_bot_token and self.telegram_owner_chat_id)
+
     def ensure_dirs(self) -> None:
         for name in ("incoming", "processing", "ready", "published", "failed", "archive"):
             (self.storage_root / name).mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()
-

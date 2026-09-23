@@ -11,6 +11,7 @@ def test_health():
         assert client.get("/health").json() == {"status": "ok"}
         ready = client.get("/ready").json()
         assert ready["auto_publish"] is False
+        assert ready["human_approval_required"] is True
 
 
 def test_admin_routes_require_api_key(monkeypatch):

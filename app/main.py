@@ -9,9 +9,11 @@ from sqlalchemy import func, select
 
 from .comments import classify_comment, may_auto_reply
 from .config import settings
-from .database import Job, Video, WebhookEvent, init_db, session_scope
+from .approvals import create_approval, queue_from_instagram
+from .database import ApprovalRequest, Job, Video, WebhookEvent, init_db, session_scope
 from .pipeline import ingest, process
 from .security import verify_admin_key, verify_meta_signature
+from .telegram_bot import notify_approval, start_telegram_bot
 
 app = FastAPI(title="Instagram Automation", version="0.1.0")
 
@@ -26,6 +28,7 @@ def require_admin(x_api_key: str | None = Header(default=None, alias="X-API-Key"
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    start_telegram_bot()
 
 
 @app.get("/health")
@@ -40,6 +43,8 @@ def ready() -> dict:
         "meta": "configured" if settings.meta_ready else "not_configured",
         "auto_publish": settings.auto_publish,
         "auto_reply_comments": settings.auto_reply_comments,
+        "human_approval_required": True,
+        "telegram_approval": "configured" if settings.telegram_ready else "not_configured",
     }
 
 
@@ -103,7 +108,35 @@ async def instagram_webhook(request: Request, x_hub_signature_256: str | None = 
         if session.scalar(select(WebhookEvent).where(WebhookEvent.event_key == event_key)):
             return {"accepted": True, "duplicate": True}
         session.add(WebhookEvent(event_key=event_key, payload_json=json.dumps(payload)))
-    return {"accepted": True, "duplicate": False}
+    approvals = queue_from_instagram(payload)
+    for approval in approvals:
+        notify_approval(approval)
+    return {"accepted": True, "duplicate": False, "approvals_queued": len(approvals)}
+
+
+@app.get("/approvals", dependencies=[Depends(require_admin)])
+def list_approvals(status: str = "PENDING_INPUT") -> list[dict]:
+    with session_scope() as session:
+        rows = session.scalars(
+            select(ApprovalRequest).where(ApprovalRequest.status == status).order_by(ApprovalRequest.id.desc()).limit(100)
+        ).all()
+        return [
+            {"id": row.id, "action_type": row.action_type, "status": row.status, "created_at": row.created_at}
+            for row in rows
+        ]
+
+
+@app.post("/approvals/content", dependencies=[Depends(require_admin)])
+async def request_content_approval(request: Request) -> dict:
+    body = await request.json()
+    content_type = str(body.get("content_type", "")).lower()
+    if content_type not in {"post", "reel"}:
+        raise HTTPException(422, "content_type must be post or reel")
+    source_ref = str(body.get("source_ref") or f"content:{content_type}:{hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()}")
+    approval = create_approval(f"publish_{content_type}", source_ref, body)
+    if approval:
+        notify_approval(approval)
+    return {"queued": bool(approval), "approval_id": approval.id if approval else None}
 
 
 @app.post("/comments/classify", dependencies=[Depends(require_admin)])
